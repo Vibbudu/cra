@@ -25,14 +25,17 @@ enum AppLinkPrompt {
     static func openTyped(_ url: String) -> AppLinks.Typed {
         let target = URL(string: url)
         let app = target.flatMap { NSWorkspace.shared.urlForApplication(toOpen: $0) }
-        let typed = AppLinks.typed(url, hasApp: app != nil)
+        let externalApp = app.flatMap { isOwnApp($0) ? nil : $0 }
+        let typed = AppLinks.typed(url, hasApp: externalApp != nil)
         let scheme = url.prefix { $0 != ":" }.lowercased() + ":"
         switch typed {
         case .load: break
         case .openApp:
-            let name = app.map { FileManager.default.displayName(atPath: $0.path).replacingOccurrences(of: ".app", with: "") } ?? "?"
-            CraLog.note("command bar opens \(name) for \(scheme)")
-            if let target { NSWorkspace.shared.open(target) }
+            if let target, let externalApp {
+                let name = FileManager.default.displayName(atPath: externalApp.path).replacingOccurrences(of: ".app", with: "")
+                CraLog.note("command bar opens \(name) for \(scheme)")
+                NSWorkspace.shared.open(target)
+            }
         case .search: CraLog.note("command bar: no app opens \(scheme), searched")
         case .refuse: CraLog.note("command bar can't open \(scheme) (refused)")
         }
@@ -60,6 +63,13 @@ enum AppLinkPrompt {
         let box = GuardBox()
         redirectGuards.setObject(box, forKey: browser)
         return box
+    }
+
+    private static func isOwnApp(_ app: URL) -> Bool {
+        AppLinks.isSelfHandler(appBundleID: Bundle(url: app)?.bundleIdentifier,
+                               ownBundleID: Bundle.main.bundleIdentifier,
+                               appPath: app.standardizedFileURL.path,
+                               ownPath: Bundle.main.bundleURL.standardizedFileURL.path)
     }
 
     /// Whether `url` is another app's. Then it is dealt with here (asked about, opened or
@@ -92,6 +102,12 @@ enum AppLinkPrompt {
         // No app for it: nothing happens, as in Chrome.
         guard let app = NSWorkspace.shared.urlForApplication(toOpen: target) else {
             CraLog.note("page \(page) wants \(scheme), no app opens it")
+            closeIfBlank(browser, scheme: scheme)
+            return true
+        }
+        // Never bounce an external protocol back to Cra itself (prevents infinite Little Window / tab loops).
+        if isOwnApp(app) {
+            CraLog.note("page \(page) can't open \(scheme) (Cra is its default app)")
             closeIfBlank(browser, scheme: scheme)
             return true
         }

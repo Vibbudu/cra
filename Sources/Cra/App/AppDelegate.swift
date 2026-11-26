@@ -759,6 +759,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
             return
         }
+        // External protocols (mailto:, news:, spotify:, etc.) must never create tabs or Little Windows,
+        // which would re-trigger OS dispatch in an infinite loop.
+        guard AppLinks.opensInBrowserFromOtherApp(url) else {
+            let scheme = url.firstIndex(of: ":").map { String(url[..<$0]).lowercased() + ":" } ?? "(no scheme)"
+            CraLog.note("ignored external URL from OS: \(scheme)")
+            return
+        }
         // Cra came forward for this link and AppKit made another browser window key on the way (a full-screen one on
         // another display): the window in use is still the one before, and the link opens in its space and profile.
         if let before = beforeComingForward?.forLink(at: store.clock.now, craActive: NSApp.isActive),

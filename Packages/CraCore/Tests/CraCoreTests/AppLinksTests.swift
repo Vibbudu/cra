@@ -119,3 +119,43 @@ struct TypedAppLinksTests {
         #expect(typed.message == "open.spotify.com wants to open this application." && typed.alwaysAllow == nil)
     }
 }
+
+struct AppLinkLoopPreventionTests {
+    @Test func selfHandlerMatchesBundleIDOrPath() {
+        #expect(AppLinks.isSelfHandler(appBundleID: "dk.kildahl.cra", ownBundleID: "dk.kildahl.cra",
+                                       appPath: "/Applications/Cra.app", ownPath: "/Applications/Cra.app"))
+        #expect(AppLinks.isSelfHandler(appBundleID: "DK.KILDAHL.CRA", ownBundleID: "dk.kildahl.cra",
+                                       appPath: "/tmp/Other.app", ownPath: "/Applications/Cra.app"))
+        #expect(AppLinks.isSelfHandler(appBundleID: nil, ownBundleID: "dk.kildahl.cra",
+                                       appPath: "/Applications/Cra.app", ownPath: "/Applications/Cra.app"))
+        #expect(!AppLinks.isSelfHandler(appBundleID: nil, ownBundleID: nil,
+                                        appPath: "/Applications/Mail.app", ownPath: "/Applications/Cra.app"))
+        #expect(!AppLinks.isSelfHandler(appBundleID: "", ownBundleID: "",
+                                        appPath: "", ownPath: ""))
+        #expect(!AppLinks.isSelfHandler(appBundleID: "com.apple.mail", ownBundleID: "dk.kildahl.cra",
+                                        appPath: "/System/Applications/Mail.app", ownPath: "/Applications/Cra.app"))
+    }
+
+    @Test func externalOSIngressRejectsExternalProtocols() {
+        #expect(AppLinks.opensInBrowserFromOtherApp("https://example.com/inbox"))
+        #expect(AppLinks.opensInBrowserFromOtherApp("http://localhost:3000/"))
+        #expect(AppLinks.opensInBrowserFromOtherApp("file:///tmp/index.html"))
+        #expect(AppLinks.opensInBrowserFromOtherApp("chrome://version"))
+        #expect(AppLinks.opensInBrowserFromOtherApp("about:blank"))
+
+        #expect(!AppLinks.opensInBrowserFromOtherApp("mailto:user@example.com"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("MAILTO:user@example.com"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("news:comp.lang"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("snews:comp.lang"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("spotify:album:1"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("zoommtg://zoom.us/join"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("tel:+4512345678"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("afp://server/share"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("cra://open?url=https://example.com"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("javascript:alert(1)"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("data:text/html,hi"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("blob:https://example.com/1"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp("web+mail:foo"))
+        #expect(!AppLinks.opensInBrowserFromOtherApp(""))
+    }
+}

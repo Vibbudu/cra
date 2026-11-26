@@ -75,14 +75,39 @@ public enum AppLinks {
         url.isEmpty || url == "about:blank" || url.hasPrefix("about:blank#") || url.hasPrefix("about:blank?")
     }
 
-    /// What `url` is for a link or window.open that wants a new tab, or a WebKit page's own
-    /// navigation to a scheme WebKit doesn't load.
-    public static func kind(of url: String) -> Kind {
-        guard let colon = url.firstIndex(of: ":") else { return .page }
+    /// Schemes another app may hand to Cra to open as a page (LaunchServices / Air Traffic Control).
+    /// External protocols (mailto:, news:, spotify:, etc.) are excluded so they can never spawn tabs
+    /// or Little Windows and loop back into the OS.
+    private static let externalOpenSchemes: Set<String> = ["http", "https", "file", "chrome", "about", "view-source"]
+
+    public static func opensInBrowserFromOtherApp(_ url: String) -> Bool {
+        scheme(of: url).map(externalOpenSchemes.contains) ?? false
+    }
+
+    /// Whether LaunchServices resolved `url` to Cra itself (`appBundleID` matches `ownBundleID`,
+    /// or `appPath` matches `ownPath`), which would loop back into Cra if dispatched via NSWorkspace.
+    public static func isSelfHandler(appBundleID: String?, ownBundleID: String?, appPath: String, ownPath: String) -> Bool {
+        if let app = appBundleID, !app.isEmpty, let own = ownBundleID, !own.isEmpty,
+           app.caseInsensitiveCompare(own) == .orderedSame {
+            return true
+        }
+        return !appPath.isEmpty && !ownPath.isEmpty && appPath == ownPath
+    }
+
+    /// Extracted RFC 3986 scheme, lowercased, or nil when `url` has no valid scheme.
+    private static func scheme(of url: String) -> String? {
+        guard let colon = url.firstIndex(of: ":") else { return nil }
         let scheme = url[..<colon].lowercased()
         // RFC 3986: a letter, then letters, digits, + - . (anything else is not a scheme).
         guard let first = scheme.first, first.isASCII, first.isLetter,
-              scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) }) else { return .page }
+              scheme.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || "+-.".contains($0)) }) else { return nil }
+        return scheme
+    }
+
+    /// What `url` is for a link or window.open that wants a new tab, or a WebKit page's own
+    /// navigation to a scheme WebKit doesn't load.
+    public static func kind(of url: String) -> Kind {
+        guard let scheme = scheme(of: url) else { return .page }
         // navigator.registerProtocolHandler's own schemes go to the page that registered them.
         if scheme.hasPrefix("web+") || pageSchemes.contains(scheme) { return .page }
         if refusedSchemes.contains(scheme) { return .refused }
